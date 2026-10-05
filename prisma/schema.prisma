@@ -1,0 +1,146 @@
+// FeastCraft — restaurant ordering schema
+// All monetary values are stored as integer cents to avoid floating point drift.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  // "CUSTOMER" | "ADMIN" — SQLite has no native enum support.
+  role         String    @default("CUSTOMER")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  orders       Order[]
+  addresses    Address[]
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String   @default("Home")
+  fullName   String
+  phone      String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  slug      String     @unique
+  // Lucide icon name, rendered client side.
+  icon      String     @default("Utensils")
+  tagline   String?
+  sortOrder Int        @default(0)
+  items     MenuItem[]
+}
+
+model MenuItem {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  description String
+  price       Int
+  image       String
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  isAvailable Boolean     @default(true)
+  isFeatured  Boolean     @default(false)
+  isSpicy     Boolean     @default(false)
+  isVeg       Boolean     @default(true)
+  calories    Int?
+  prepMinutes Int         @default(20)
+  rating      Float       @default(4.5)
+  // Comma separated — SQLite does not support scalar lists.
+  tags        String      @default("")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  orderItems  OrderItem[]
+
+  @@index([categoryId])
+  @@index([isFeatured])
+}
+
+model PromoCode {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  description    String?
+  // "PERCENT" | "FIXED" — percent holds 0-100, fixed holds cents.
+  discountType   String    @default("PERCENT")
+  discountValue  Int
+  minOrderAmount Int       @default(0)
+  maxDiscount    Int?
+  active         Boolean   @default(true)
+  expiresAt      DateTime?
+  usageLimit     Int?
+  usedCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // "PENDING" | "CONFIRMED" | "PREPARING" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED"
+  status          String      @default("PENDING")
+  // "PENDING" | "PAID" | "FAILED" | "REFUNDED"
+  paymentStatus   String      @default("PENDING")
+  paymentMethod   String      @default("CARD")
+  paymentIntentId String?
+  subtotal        Int
+  deliveryFee     Int         @default(0)
+  tax             Int         @default(0)
+  discount        Int         @default(0)
+  total           Int
+  promoCode       String?
+  // "DELIVERY" | "PICKUP"
+  fulfilment      String      @default("DELIVERY")
+  customerName    String
+  customerEmail   String?
+  customerPhone   String
+  addressLine1    String
+  addressLine2    String?
+  city            String
+  state           String
+  postalCode      String
+  notes           String?
+  placedAt        DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OrderItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([placedAt])
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  // Name and price are snapshotted so history survives menu edits.
+  name       String
+  price      Int
+  quantity   Int
+  notes      String?
+}
